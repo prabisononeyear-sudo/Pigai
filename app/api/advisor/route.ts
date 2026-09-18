@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
     // Installed SDK's non-beta types don't yet expose output_config.effort;
     // this call runs at the default effort, which is fine for a short JSON reply.
     const response = await client.messages.create({
-      model: "claude-opus-5",
+      model: "claude-sonnet-5",
       max_tokens: 1200,
       system: buildSystemPrompt(ctx),
       messages: history.map((m) => ({ role: m.role, content: m.content })),
@@ -96,7 +96,11 @@ export async function POST(req: NextRequest) {
     raw = textBlock?.text ?? "";
   } catch (e) {
     console.error("[advisor] Anthropic request failed", e);
-    return NextResponse.json({ error: "Pig couldn't reach the AI service just now." }, { status: 502 });
+    // Upstream detail (e.g. "credit balance is too low", "model_not_found") is
+    // echoed to the client so the page is diagnosable without server logs.
+    // Carries no secrets; trim to a generic message once the setup is settled.
+    const detail = e instanceof Anthropic.APIError ? `${e.status ?? ""} ${e.message}`.trim().slice(0, 300) : "unknown error";
+    return NextResponse.json({ error: `Pig couldn't reach the AI service: ${detail}` }, { status: 502 });
   }
 
   const match = raw.match(/\{[\s\S]*\}/);

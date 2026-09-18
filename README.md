@@ -23,3 +23,55 @@ The design medium is **HTML/CSS/JS** — these are prototypes, not production co
 - `README.md` — this file
 - `chats/` — conversation transcripts (read these!)
 - `project/` — the `Design system setup` project files (HTML prototypes, assets, components)
+
+---
+
+## Implementation
+
+The design above has been implemented as a real Next.js app at the repo root (`app/`, `components/`,
+`lib/`). The original prototype files in `project/` are kept for reference only and are not part of
+the build.
+
+**Stack:** Next.js 15 (App Router, TypeScript), no CSS framework — styles closely mirror the
+prototype's inline styles plus a small `app/globals.css` for hover/active states, keyframe
+animations and responsive breakpoints. Fonts (Bricolage Grotesque, Figtree) load via
+`next/font/google`.
+
+**Routes:** `/`, `/services`, `/pricing`, `/ask-pig`, `/contact` — real routes with per-page
+metadata/OG tags (see each route's `layout.tsx` or `page.tsx`).
+
+**Pricing engine:** `lib/catalogue.js` is the original `catalogue.js` verbatim (services,
+packages, prices, the guided-questionnaire rule engine, and `buildPlanView` for rendering a
+computed plan). It's imported by both the client (guided mode) and the server (`/api/advisor`,
+AI mode) so prices are always computed here — never by the model.
+
+**Ask Pig advisor:**
+- *Guided mode* runs entirely client-side (`lib/advisor-context.tsx`) — fixed questions, no
+  network call, matches the original's "no AI involved" guided path.
+- *Live AI mode* posts the conversation to `app/api/advisor/route.ts`, which calls the Anthropic
+  API server-side (`claude-opus-5`) to draft a reply/question or propose service ids, then
+  computes the actual plan and prices from `lib/catalogue.js` before returning it to the client.
+  The model never sets a price.
+- If the API call fails (including a missing key), the UI shows a friendly error with **Try
+  again** / **Use guided questions** — the site works end-to-end with zero configuration.
+
+### Deploying to Vercel
+
+1. Push this repo to GitHub/GitLab/Bitbucket and import it in Vercel (framework preset:
+   Next.js — auto-detected).
+2. In Project Settings → Environment Variables, add `ANTHROPIC_API_KEY` (from
+   [console.anthropic.com](https://console.anthropic.com)) to enable Live AI mode. Without it,
+   the site still works fully in guided mode.
+3. Deploy. No other configuration is required — `next build` / `next start` are the default
+   commands.
+
+For local development: `npm install`, copy `.env.local.example` to `.env.local` and fill in
+`ANTHROPIC_API_KEY` (optional), then `npm run dev`.
+
+### Known gaps vs. the design
+
+- The two demo videos ("3 ways", "Google vs ChatGPT") are still placeholder slots on the Home
+  page, as in the original — the source `.mp4` files were never included in this bundle.
+- Images are plain `<img>` tags rather than `next/image` (Next's build lint warns on this); this
+  keeps `clamp()`-based fluid sizing identical to the source and avoids Vercel's image
+  optimization billing by default — swap in `next/image` later if that tradeoff should flip.

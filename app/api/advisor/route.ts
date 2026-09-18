@@ -63,8 +63,9 @@ function arr(a: unknown, prices: Set<number>): string[] {
 
 export async function POST(req: NextRequest) {
   if (!process.env.ANTHROPIC_API_KEY) {
+    console.error("[advisor] ANTHROPIC_API_KEY is not set on this deployment — live AI is disabled.");
     return NextResponse.json(
-      { error: "Live AI is not configured on this deployment (missing ANTHROPIC_API_KEY)." },
+      { error: "Pig's live AI advisor isn't switched on for this site yet." },
       { status: 503 }
     );
   }

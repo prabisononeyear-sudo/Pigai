@@ -185,8 +185,22 @@ export function useAdvisorState() {
         signal: controller.signal,
       });
       clearTimeout(timeout);
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "request-failed");
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json) {
+        const detail =
+          json && typeof json.error === "string" && json.error.trim()
+            ? json.error.trim()
+            : "Pig couldn't reach the AI service just now.";
+        console.error("[advisor] request failed", res.status, json);
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          pigMood: "listening",
+          error: `${detail} [${res.status}] Your message is kept — try again, or switch to the guided questions.`,
+        }));
+        return;
+      }
 
       if (json.kind === "plan") {
         setState((prev) => ({
@@ -215,7 +229,7 @@ export function useAdvisorState() {
       const aborted = e instanceof DOMException && e.name === "AbortError";
       const msg = aborted
         ? "Pig took too long to answer. Your message is kept — try again, or switch to the guided questions."
-        : "Pig couldn't reach the AI service just now. Your message is kept — try again, or switch to the guided questions.";
+        : "Pig couldn't be reached — the connection failed. Your message is kept — try again, or switch to the guided questions.";
       setState((prev) => ({ ...prev, loading: false, error: msg, pigMood: "listening" }));
     }
   };

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
 import {
   SERVICES,
   PACKAGES,
@@ -62,8 +61,8 @@ function arr(a: unknown, prices: Set<number>): string[] {
 }
 
 export async function POST(req: NextRequest) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.error("[advisor] ANTHROPIC_API_KEY is not set on this deployment — live AI is disabled.");
+  if (!process.env.OPENAI_API_KEY) {
+    console.error("[advisor] OPENAI_API_KEY is not set on this deployment — live AI is disabled.");
     return NextResponse.json(
       { error: "Pig's live AI advisor isn't switched on for this site yet." },
       { status: 503 }
@@ -80,27 +79,52 @@ export async function POST(req: NextRequest) {
   const history = Array.isArray(body.messages) ? body.messages.slice(-30) : [];
   const ctx: Ctx = body.ctx && typeof body.ctx === "object" ? body.ctx : {};
 
-  const client = new Anthropic();
-
   let raw: string;
   try {
-    // Installed SDK's non-beta types don't yet expose output_config.effort;
-    // this call runs at the default effort, which is fine for a short JSON reply.
-    const response = await client.messages.create({
-      model: "claude-sonnet-5",
-      max_tokens: 1200,
-      system: buildSystemPrompt(ctx),
-      messages: history.map((m) => ({ role: m.role, content: m.content })),
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-5.6-luna",
+        reasoning: { effort: "low" },
+        instructions: buildSystemPrompt(ctx),
+        input: history.map((m) => ({
+          role: m.role,
+          content: m.content,
+        })),
+        max_output_tokens: 1200,
+        store: false,
+      }),
     });
-    const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
-    raw = textBlock?.text ?? "";
+
+    const data = (await response.json()) as {
+      output?: Array<{
+        content?: Array<{ type?: string; text?: string }>;
+      }>;
+    };
+
+    if (!response.ok) {
+      console.error("[advisor] OpenAI request failed", response.status, data);
+      return NextResponse.json(
+        { error: "Pig couldn't reach the AI service just now. Please try again." },
+        { status: 502 }
+      );
+    }
+
+    raw = (data.output ?? [])
+      .flatMap((item) => item.content ?? [])
+      .filter((part) => part.type === "output_text")
+      .map((part) => part.text ?? "")
+      .join("");
   } catch (e) {
-    console.error("[advisor] Anthropic request failed", e);
-    // Upstream detail (e.g. "credit balance is too low", "model_not_found") is
-    // echoed to the client so the page is diagnosable without server logs.
-    // Carries no secrets; trim to a generic message once the setup is settled.
-    const detail = e instanceof Anthropic.APIError ? `${e.status ?? ""} ${e.message}`.trim().slice(0, 300) : "unknown error";
-    return NextResponse.json({ error: `Pig couldn't reach the AI service: ${detail}` }, { status: 502 });
+    console.error("[advisor] OpenAI request failed", e);
+    return NextResponse.json(
+      { error: "Pig couldn't reach the AI service just now. Please try again." },
+      { status: 502 }
+    );
   }
 
   const match = raw.match(/\{[\s\S]*\}/);

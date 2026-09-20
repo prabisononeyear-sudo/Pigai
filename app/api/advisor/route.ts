@@ -95,8 +95,11 @@ export async function POST(req: NextRequest) {
           role: m.role,
           content: m.content,
         })),
-        max_output_tokens: 1200,
-        store: false,
+        max_output_tokens: 2000,
+text: {
+  format: { type: "json_object" },
+},
+store: false,
       }),
     });
 
